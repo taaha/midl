@@ -15,6 +15,8 @@ import torch
 
 from tqdm import tqdm
 
+import matplotlib.pyplot as plt
+
 def get_logit_lens(model, processor, text, image, layer_ids=None):
     """
     Analyze logit lens for Gemma model across different layers.
@@ -39,28 +41,27 @@ def get_logit_lens(model, processor, text, image, layer_ids=None):
     
     return logits_per_layer
 
-def plot_logit_lens(logits_per_layer, tokenizer, top_k=5):
+def plot_logit_lens(logits_per_layer, tokenizer, target_token="cat", top_k=5):
     """
-    Plot top-k token probabilities across layers.
+    Plot top-k token probabilities across layers for a specific token.
     """
     plt.figure(figsize=(12, 6))
     
     # Get probabilities for last position
     probs_per_layer = [torch.softmax(logits[0, -1], dim=-1) for logits in logits_per_layer]
     
-    # Get top-k tokens
-    last_layer_probs = probs_per_layer[-1]
-    top_k_values, top_k_indices = torch.topk(last_layer_probs, top_k)
-    top_k_tokens = [tokenizer.decode([idx.item()]) for idx in top_k_indices]
+    # Get the index of the target token
+    target_token_id = tokenizer.encode(target_token)[0]
     
-    # Plot probabilities across layers
-    for token_idx, token in zip(top_k_indices, top_k_tokens):
-        probs = [probs[token_idx].item() for probs in probs_per_layer]
-        plt.plot(probs, label=f"'{token}'")
+    # Get probabilities for the target token across layers
+    target_probs = [probs[target_token_id].item() for probs in probs_per_layer]
+    
+    # Plot probabilities for the target token across layers
+    plt.plot(target_probs, label=f"'{target_token}'")
     
     plt.xlabel("Layer")
     plt.ylabel("Probability")
-    plt.title("Logit Lens Analysis")
+    plt.title(f"Logit Lens Analysis for '{target_token}'")
     plt.legend()
     plt.grid(True)
     return plt
@@ -79,7 +80,7 @@ def analyze_text(text, model_id="google/paligemma2-3b-mix-448", image=None):
     
     # Plot results
     plt = plot_logit_lens(logits, tokenizer)
-    plt.show()
+    plt.savefig("logit_lens.png")
 
 # Example usage
 if __name__ == "__main__":
