@@ -24,10 +24,23 @@ def get_logit_lens(model, processor, text, image, layer_ids=None):
     """
     # Tokenize input
     inputs = processor(text=text, images=image, return_tensors="pt").to(model.device)
+    input_len = inputs["input_ids"].shape[-1]
     
     # Get all hidden states
     with torch.no_grad():
-        outputs = model(**inputs, output_hidden_states=True, return_dict_in_generate=True)
+        outputs = model.generate(**inputs, output_hidden_states=True, output_logits=True, return_dict_in_generate=True)
+
+    generation = outputs.sequences[0][input_len:]
+    final_generation = processor.decode(generation, skip_special_tokens=True)
+
+    breakpoint()
+    # len(outputs.sequences[0][input_len:]) -> 20 (number of generated tokens)
+    # output.keys() -> odict_keys(['sequences', 'logits', 'hidden_states', 'past_key_values'])
+    # len(outputs.hidden_states) -> 20 (number of generated tokens)
+    # len(outputs.hidden_states[0]) -> 27 (number of layers)
+    # outputs.hidden_states[0][0].shape -> torch.Size([1, 1029, 2304])    (1029 is number of input tokens)
+    # outputs.hidden_states[1][0].shape -> torch.Size([1, 1, 2304])
+    # outputs.hidden_states[19][0].shape -> torch.Size([1, 1, 2304])   
     
     hidden_states = outputs.hidden_states
     if layer_ids is None:
@@ -41,7 +54,7 @@ def get_logit_lens(model, processor, text, image, layer_ids=None):
         layer_logits = model.language_model.lm_head(layer_hidden)
         logits_per_layer.append(layer_logits)
     
-    return logits_per_layer
+    return logits_per_layer, final_generation
 
 def plot_logit_lens(logits_per_layer, tokenizer, target_token="cat", top_k=5, num_patches=24):
     """
@@ -96,7 +109,9 @@ def analyze_text(text, model_id="google/paligemma2-3b-mix-448", image=None, targ
     tokenizer = processor.tokenizer
     
     # Get logits across layers
-    logits = get_logit_lens(model, processor, text, image)
+    logits, final_generation = get_logit_lens(model, processor, text, image)
+
+    breakpoint()
     
     # Plot results
     line_plot, segmentation_maps = plot_logit_lens(logits, tokenizer, target_token=target_token)
