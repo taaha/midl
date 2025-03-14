@@ -33,14 +33,54 @@ def get_logit_lens(model, processor, text, image, layer_ids=None):
     generation = outputs.sequences[0][input_len:]
     final_generation = processor.decode(generation, skip_special_tokens=True)
 
-    breakpoint()
     # len(outputs.sequences[0][input_len:]) -> 20 (number of generated tokens)
     # output.keys() -> odict_keys(['sequences', 'logits', 'hidden_states', 'past_key_values'])
     # len(outputs.hidden_states) -> 20 (number of generated tokens)
     # len(outputs.hidden_states[0]) -> 27 (number of layers)
     # outputs.hidden_states[0][0].shape -> torch.Size([1, 1029, 2304])    (1029 is number of input tokens)
     # outputs.hidden_states[1][0].shape -> torch.Size([1, 1, 2304])
-    # outputs.hidden_states[19][0].shape -> torch.Size([1, 1, 2304])   
+    # outputs.hidden_states[19][0].shape -> torch.Size([1, 1, 2304])
+    # outputs.hidden_states[19][26][0][0].shape -> torch.Size([2304])       (19 is token number in sentence, 26 is final layer)
+
+    # model.language_model.lm_head. -> (lm_head): Linear(in_features=2304, out_features=257216, bias=False)
+    # model.language_model.lm_head(outputs.hidden_states[19][26][0][0]).shape -> torch.Size([257216])
+    # model.language_model.lm_head(outputs.hidden_states[19][26][0][0]) ->
+    #                               tensor([ -1.5703,   6.2188, -11.3750,  ...,  -1.5547,  -1.5703,  -1.5703],
+    #                               device='cuda:0', dtype=torch.bfloat16, grad_fn=<SqueezeBackward4>)
+
+
+    """
+    working code:
+
+    # Get logits for the last token from the last layer
+    last_token_logits = model.language_model.lm_head(outputs.hidden_states[19][26][0][0])
+    
+    # Convert to probabilities using softmax
+    probs = torch.nn.functional.softmax(last_token_logits, dim=-1)
+    
+    # Get top 5 probabilities and their indices
+    top_probs, top_indices = torch.topk(probs, k=5)
+    
+    # Convert to CPU and regular Python types for easier printing
+    top_probs = top_probs.cpu().tolist()
+    top_indices = top_indices.cpu().tolist()
+
+    processor.tokenizer.decode(top_indices)
+    """
+
+    # tokens_across_layers[26] matching final_generation for first token
+    tokens_across_layers_for_each_generated_token = []
+    for hidden_state in tqdm(outputs.hidden_states): # going through 20 generated tokens
+        tokens_across_layers = []
+        for layer in tqdm(hidden_state): # going through 27 layers
+            last_token_logits = model.language_model.lm_head(layer[-1][-1])
+            probs = torch.nn.functional.softmax(last_token_logits, dim=-1)
+            top_probs, top_indices = torch.topk(probs, k=1)
+            tokens_across_layers.append(processor.tokenizer.decode(top_indices))
+        tokens_across_layers_for_each_generated_token.append(tokens_across_layers)
+    
+    breakpoint()
+
     
     hidden_states = outputs.hidden_states
     if layer_ids is None:
