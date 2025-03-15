@@ -17,6 +17,10 @@ import torch
 from tqdm import tqdm
 
 import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+
+import plotly.graph_objects as go
 
 def get_logit_lens(model, processor, text, image, layer_ids=None):
     """
@@ -28,45 +32,11 @@ def get_logit_lens(model, processor, text, image, layer_ids=None):
     
     # Get all hidden states
     with torch.no_grad():
+        torch.compiler.cudagraph_mark_step_begin()
         outputs = model.generate(**inputs, output_hidden_states=True, output_logits=True, return_dict_in_generate=True)
 
     generation = outputs.sequences[0][input_len:]
     final_generation = processor.decode(generation, skip_special_tokens=True)
-
-    # len(outputs.sequences[0][input_len:]) -> 20 (number of generated tokens)
-    # output.keys() -> odict_keys(['sequences', 'logits', 'hidden_states', 'past_key_values'])
-    # len(outputs.hidden_states) -> 20 (number of generated tokens)
-    # len(outputs.hidden_states[0]) -> 27 (number of layers)
-    # outputs.hidden_states[0][0].shape -> torch.Size([1, 1029, 2304])    (1029 is number of input tokens)
-    # outputs.hidden_states[1][0].shape -> torch.Size([1, 1, 2304])
-    # outputs.hidden_states[19][0].shape -> torch.Size([1, 1, 2304])
-    # outputs.hidden_states[19][26][0][0].shape -> torch.Size([2304])       (19 is token number in sentence, 26 is final layer)
-
-    # model.language_model.lm_head. -> (lm_head): Linear(in_features=2304, out_features=257216, bias=False)
-    # model.language_model.lm_head(outputs.hidden_states[19][26][0][0]).shape -> torch.Size([257216])
-    # model.language_model.lm_head(outputs.hidden_states[19][26][0][0]) ->
-    #                               tensor([ -1.5703,   6.2188, -11.3750,  ...,  -1.5547,  -1.5703,  -1.5703],
-    #                               device='cuda:0', dtype=torch.bfloat16, grad_fn=<SqueezeBackward4>)
-
-
-    """
-    working code:
-
-    # Get logits for the last token from the last layer
-    last_token_logits = model.language_model.lm_head(outputs.hidden_states[19][26][0][0])
-    
-    # Convert to probabilities using softmax
-    probs = torch.nn.functional.softmax(last_token_logits, dim=-1)
-    
-    # Get top 5 probabilities and their indices
-    top_probs, top_indices = torch.topk(probs, k=5)
-    
-    # Convert to CPU and regular Python types for easier printing
-    top_probs = top_probs.cpu().tolist()
-    top_indices = top_indices.cpu().tolist()
-
-    processor.tokenizer.decode(top_indices)
-    """
 
     # tokens_across_layers[26] matching final_generation for first token
     tokens_across_layers_for_each_generated_token = []
@@ -79,65 +49,27 @@ def get_logit_lens(model, processor, text, image, layer_ids=None):
             tokens_across_layers.append(processor.tokenizer.decode(top_indices))
         tokens_across_layers_for_each_generated_token.append(tokens_across_layers)
     
-    breakpoint()
+    return tokens_across_layers_for_each_generated_token, final_generation
 
-    
-    hidden_states = outputs.hidden_states
-    if layer_ids is None:
-        layer_ids = range(len(hidden_states))
-    
-    # Get logits for each layer
-    logits_per_layer = []
-    # for layer_id in tqdm(layer_ids):
-    for layer_id in tqdm(layer_ids[10:]):     # 10:layer_ids
-        layer_hidden = hidden_states[layer_id]
-        layer_logits = model.language_model.lm_head(layer_hidden)
-        logits_per_layer.append(layer_logits)
-    
-    return logits_per_layer, final_generation
 
-def plot_logit_lens(logits_per_layer, tokenizer, target_token="cat", top_k=5, num_patches=24):
+def plot_logit_lens(logits):
     """
-    Plot top-k token probabilities across layers for a specific token.
-    Returns both the line plot and a list of segmentation maps.
+    Plot logit lens as a heatmap where each row is a generated token and columns are layers.
     """
-    line_plot = plt.figure(figsize=(12, 6))
-    
-    # Get probabilities for all positions
-    probs_per_layer = [torch.softmax(logits[0], dim=-1) for logits in tqdm(logits_per_layer[10:])]
-    
-    # Get the index of the target token
-    target_token_ids = tokenizer.encode(target_token)  # Don't skip any tokens
-    print(f"Target token ids: {target_token_ids}")
-    
-    # Get probabilities for the target token across layers
-    target_probs = []
-    segmentation_maps = []
-    
-    for probs in probs_per_layer:
-        # Get probability for target token at the last position
-        target_prob = probs[-1][target_token_ids].max().item()
-        target_probs.append(target_prob)
-        
-        # Generate segmentation map using patch positions
-        if probs.shape[0] >= num_patches * num_patches:
-            patch_probs = probs[:num_patches * num_patches]  # Take only patch positions
-            patch_probs = patch_probs[:, target_token_ids].max(dim=1)[0]  # Max over target tokens
-            # breakpoint()
-            segmap = patch_probs.view(num_patches, num_patches).detach().cpu().float().numpy()
-        else:
-            segmap = np.zeros((num_patches, num_patches))
-        segmentation_maps.append(segmap)
-    
-    # Plot probabilities for the target token across layers
-    plt.plot(target_probs, label=f"'{target_token}'")
-    
-    plt.xlabel("Layer")
-    plt.ylabel("Probability")
-    plt.title(f"Logit Lens Analysis for '{target_token}'")
-    plt.legend()
-    plt.grid(True)
-    return line_plot, segmentation_maps
+    logits = [[x[i] for x in logits] for i in range(len(logits[0]))]
+
+    ones_matrix = [[1 for _ in row] for row in logits]
+
+    fig = go.Figure(data=go.Heatmap(
+                        z=ones_matrix,
+                        text=logits,
+                        texttemplate="%{text}",
+                        textfont={"size":10}))
+
+    # Set figure size (width and height in pixels)
+    fig.update_layout(width=1200, height=800)
+    fig.write_image("logit_lens.png")
+
 
 def analyze_text(text, model_id="google/paligemma2-3b-mix-448", image=None, target_token="cat"):
     """
@@ -150,28 +82,9 @@ def analyze_text(text, model_id="google/paligemma2-3b-mix-448", image=None, targ
     
     # Get logits across layers
     logits, final_generation = get_logit_lens(model, processor, text, image)
+    fig = plot_logit_lens(logits)
 
-    breakpoint()
-    
-    # Plot results
-    line_plot, segmentation_maps = plot_logit_lens(logits, tokenizer, target_token=target_token)
-    line_plot.savefig("logit_lens_line.png")
-    
-    # Plot segmentation maps for selected layers
-    fig, axes = plt.subplots(2, 4, figsize=(20, 10))
-    # layers_to_plot = [0, 7, 15, 23, 31, 39, 47, -1]  # Adjust based on your model's layer count
-    layers_to_plot = [-1]
 
-    for idx, layer_idx in enumerate(layers_to_plot):
-        ax = axes[idx // 4, idx % 4]
-        im = ax.imshow(segmentation_maps[layer_idx], cmap='viridis')
-        ax.set_title(f'Layer {layer_idx}')
-        plt.colorbar(im, ax=ax)
-    
-    plt.tight_layout()
-    plt.savefig("logit_lens_segmentation.png")
-
-# Example usage
 if __name__ == "__main__":
     text = "caption the picture"
     img_path = "images/COCO_val2014_000000562150.jpg"
