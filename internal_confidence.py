@@ -64,46 +64,9 @@ def get_confidence_for_class(model, processor, text, image, class_="cat"):
     # outputs.hidden_states[0][0][0][0].shape -> torch.Size([2304])
     # outputs.hidden_states[0][0][0][1024].shape -> torch.Size([2304])
 
-    """
-    working code:
-
-    # Get logits for the last token from the last layer
-    last_token_logits = model.language_model.lm_head(outputs.hidden_states[19][26][0][0])
-    
-    # Convert to probabilities using softmax
-    probs = torch.nn.functional.softmax(last_token_logits, dim=-1)
-    
-    # Get top 5 probabilities and their indices
-    top_probs, top_indices = torch.topk(probs, k=5)
-    
-    # Convert to CPU and regular Python types for easier printing
-    top_probs = top_probs.cpu().tolist()
-    top_indices = top_indices.cpu().tolist()
-
-    processor.tokenizer.decode(top_indices)
-    """
-
-    """
-    working code
-    tokens_across_layers_for_each_generated_token = []
-    # going thru 27 layers
-    for hidden_state in tqdm(outputs.hidden_states[0]):
-        # going through 1024 image tokens
-        tokens_across_each_image_token = []
-        for token_logits in tqdm(hidden_state[0][0:number_of_image_tokens]):
-            token_logits = model.language_model.lm_head(token_logits)
-            probs = torch.nn.functional.softmax(token_logits, dim=-1)
-            top_probs, top_indices = torch.topk(probs, k=1)
-            tokens_across_each_image_token.append(processor.tokenizer.decode(top_indices))
-        tokens_across_layers_for_each_generated_token.append(tokens_across_each_image_token)
-
-    # len(tokens_across_layers_for_each_generated_token) -> 27 (number of layers)
-    # len(tokens_across_layers_for_each_generated_token[0]) -> 1024 (number of image tokens)
-    """
-
     class_index = processor.tokenizer.encode(class_)[0]
 
-    class_probs_across_layers_for_each_generated_token = []
+    class_probs_across_layers_for_each_image_token = []
     # going thru 27 layers
     for hidden_state in tqdm(outputs.hidden_states[0]):
         # going through 1024 image tokens
@@ -113,22 +76,13 @@ def get_confidence_for_class(model, processor, text, image, class_="cat"):
             probs = torch.nn.functional.softmax(token_logits, dim=-1)
             class_prob = probs[class_index]
             class_probs_across_each_image_token.append(class_prob)
-        class_probs_across_layers_for_each_generated_token.append(class_probs_across_each_image_token)
+        class_probs_across_layers_for_each_image_token.append(class_probs_across_each_image_token)
 
     breakpoint() # TODO: check if this is correct tomorrow
-
-
-
-        # tokens_across_layers = []
-        # for layer in tqdm(hidden_state): # going through 27 layers
-        #     last_token_logits = model.language_model.lm_head(layer[-1][-1])
-        #     probs = torch.nn.functional.softmax(last_token_logits, dim=-1)
-        #     top_probs, top_indices = torch.topk(probs, k=1)
-        #     tokens_across_layers.append(processor.tokenizer.decode(top_indices))
-        # tokens_across_layers_for_each_generated_token.append(tokens_across_layers)
-
+    # len(class_probs_across_each_image_token) -> 1024 (number of image tokens)
+    # len(class_probs_across_layers_for_each_generated_token) -> 27 (number of layers)
     
-    return tokens_across_layers_for_each_generated_token, final_generation
+    return class_probs_across_layers_for_each_image_token, final_generation
 
 
 def plot_logit_lens(logits):
