@@ -78,30 +78,76 @@ def get_confidence_for_class(model, processor, text, image, class_="cat"):
             class_probs_across_each_image_token.append(class_prob)
         class_probs_across_layers_for_each_image_token.append(class_probs_across_each_image_token)
 
-    breakpoint() # TODO: check if this is correct tomorrow
     # len(class_probs_across_each_image_token) -> 1024 (number of image tokens)
-    # len(class_probs_across_layers_for_each_generated_token) -> 27 (number of layers)
+    # len(class_probs_across_layers_for_each_image_token) -> 27 (number of layers)
     
     return class_probs_across_layers_for_each_image_token, final_generation
 
 
-def plot_logit_lens(logits):
+def plot_conf_scores(conf_scores, class_="cat"):
     """
-    Plot logit lens as a heatmap where each row is a generated token and columns are layers.
+    Plot confidence scores as a heatmap where rows are image tokens (1024) and columns are layers (27).
     """
-    logits = [[x[i] for x in logits] for i in range(len(logits[0]))]
+    # Convert list of lists of tensors to numpy array
+    conf_matrix = np.array([[float(tensor.cpu()) for tensor in layer] for layer in conf_scores])
+    
+    # Transpose to match the desired visualization (1024 rows x 27 columns)
+    conf_matrix = conf_matrix.T
+    
+    # Create the figure and axis
+    plt.figure(figsize=(12, 8))
+    
+    # Create heatmap using seaborn
+    sns.heatmap(conf_matrix, cmap='Blues', 
+                xticklabels=list(range(27)),  # Layer indices
+                yticklabels=list(range(0, 1024, 100)),  # Show every 100th token index
+                cbar_kws={'label': 'Confidence Score'})
+    
+    plt.xlabel('LM Layer')
+    plt.ylabel('Image Embedding Index')
+    plt.title(f'Confidence Scores Across Layers and Image Tokens for {class_}')
+    
+    # Save the plot
+    plt.savefig('confidence_heatmap.png', dpi=300, bbox_inches='tight')
+    plt.close()
 
-    ones_matrix = [[1 for _ in row] for row in logits]
 
-    fig = go.Figure(data=go.Heatmap(
-                        z=ones_matrix,
-                        text=logits,
-                        texttemplate="%{text}",
-                        textfont={"size":10}))
+def plot_conf_scores_log(conf_scores):
+    """
+    Plot confidence scores as a heatmap where rows are image tokens (1024) and columns are layers (27).
+    Using log scale to better visualize the range of values.
+    """
+    # Convert list of lists of tensors to numpy array
+    conf_matrix = np.array([[float(tensor.cpu()) for tensor in layer] for layer in conf_scores])
+    
+    # Transpose to match the desired visualization (1024 rows x 27 columns)
+    conf_matrix = conf_matrix.T
+    
+    # Apply log transformation (adding small epsilon to avoid log(0))
+    epsilon = 1e-10
+    conf_matrix_log = np.log10(conf_matrix + epsilon)
+    
+    # Create the figure and axis
+    plt.figure(figsize=(12, 8))
+    
+    # Create heatmap using seaborn with a logarithmic colormap
+    sns.heatmap(conf_matrix_log, 
+                cmap='Blues',
+                xticklabels=list(range(27)),  # Layer indices
+                yticklabels=list(range(0, 1024, 100)),  # Show every 100th token index
+                cbar_kws={'label': 'Log10(Confidence Score)'})
+    
+    plt.xlabel('LM Layer')
+    plt.ylabel('Image Embedding Index')
+    plt.title('Log-scale Confidence Scores Across Layers and Image Tokens')
+    
+    # Save the plot
+    plt.savefig('confidence_heatmap_log.png', dpi=300, bbox_inches='tight')
+    plt.close()
 
-    # Set figure size (width and height in pixels)
-    fig.update_layout(width=1200, height=800)
-    fig.write_image("logit_lens.png")
+
+def plot_conf_segmentation(conf_scores):
+    breakpoint()
 
 
 def analyze_text(text, model_id="google/paligemma2-3b-mix-448", image=None, target_token="cat"):
@@ -114,9 +160,9 @@ def analyze_text(text, model_id="google/paligemma2-3b-mix-448", image=None, targ
     tokenizer = processor.tokenizer
     
     # Get logits across layers
-    logits, final_generation = get_confidence_for_class(model, processor, text, image)
-    fig = plot_logit_lens(logits)
-
+    conf_scores, final_generation = get_confidence_for_class(model, processor, text, image)
+    # plot_conf_scores(conf_scores)
+    plot_conf_segmentation(conf_scores)
 
 if __name__ == "__main__":
     text = "caption the picture"
