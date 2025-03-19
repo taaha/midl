@@ -146,8 +146,19 @@ def plot_conf_scores_log(conf_scores):
     plt.close()
 
 
-def plot_conf_segmentation(conf_scores):
-    breakpoint()
+def plot_conf_segmentation(conf_scores, image, class_="cat"):
+    last_layer_logits = [float(tensor.cpu()) for tensor in conf_scores[-1]]
+    last_layer_logits_reshaped = np.array(last_layer_logits).reshape(32, 32)
+    image_width, image_height = image.size
+    segmentation_resized = (np.array(Image.fromarray(last_layer_logits_reshaped).resize((image_width, image_height), Image.BILINEAR)))
+
+
+    plt.imshow(image)
+    plt.imshow(segmentation_resized, cmap='jet', interpolation='bilinear', alpha=0.5)
+    plt.axis('off')
+    plt.title(f"'{class_}' localization")
+    plt.tight_layout()
+    plt.savefig(f'segmentation_resized_{class_}.png')
 
 
 def analyze_text(text, model_id="google/paligemma2-3b-mix-448", image=None, target_token="cat"):
@@ -159,14 +170,19 @@ def analyze_text(text, model_id="google/paligemma2-3b-mix-448", image=None, targ
     processor = PaliGemmaProcessor.from_pretrained(model_id)
     tokenizer = processor.tokenizer
     
-    # Get logits across layers
-    conf_scores, final_generation = get_confidence_for_class(model, processor, text, image)
-    # plot_conf_scores(conf_scores)
-    plot_conf_segmentation(conf_scores)
+    conf_scores, final_generation = get_confidence_for_class(model, processor, text, image, class_=target_token)
+
+    # TODO: take max vlaue insteadof final layer
+    plot_conf_segmentation(conf_scores, image, class_=target_token)
+    return final_generation
 
 if __name__ == "__main__":
     text = "caption the picture"
     img_path = "images/COCO_val2014_000000562150.jpg"
     image = Image.open(img_path)
-    analyze_text(text, image=image)
+    # target_token_list=["cat", "grass", "bicycle", "dog", "girl"]
+    # for target_token in tqdm(target_token_list):
+    #     analyze_text(text, image=image, target_token=target_token)
+    final_generation = analyze_text(text, image=image, target_token="dog")
+    print(final_generation)
 
