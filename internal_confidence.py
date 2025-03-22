@@ -148,10 +148,18 @@ def plot_conf_scores_log(conf_scores):
 
 
 def plot_conf_segmentation(conf_scores, image, class_="cat"):
-    last_layer_logits = [float(tensor.cpu()) for tensor in conf_scores[-1]]
-    last_layer_logits_reshaped = np.array(last_layer_logits).reshape(32, 32)
-    image_width, image_height = image.size
-    segmentation_resized = (np.array(Image.fromarray(last_layer_logits_reshaped).resize((image_width, image_height), Image.BILINEAR)))
+    ## max value logits
+    stacked_tensors = torch.stack([torch.stack(tensor_list) for tensor_list in conf_scores])
+    max_values = torch.max(stacked_tensors, dim=0).values
+    max_values_list = max_values.tolist()
+    max_values_list_reshaped = np.array(max_values_list).reshape(32, 32)
+    segmentation_resized = (np.array(Image.fromarray(max_values_list_reshaped).resize((image.width, image.height), Image.BILINEAR)))
+
+    ## last layer logits
+    # last_layer_logits = [float(tensor.cpu()) for tensor in conf_scores[-1]]
+    # last_layer_logits_reshaped = np.array(last_layer_logits).reshape(32, 32)
+    # image_width, image_height = image.size
+    # segmentation_resized = (np.array(Image.fromarray(last_layer_logits_reshaped).resize((image_width, image_height), Image.BILINEAR)))
 
 
     plt.imshow(image)
