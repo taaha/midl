@@ -4,6 +4,7 @@ from io import BytesIO
 import torch
 import numpy as np
 import argparse
+import os
 
 from transformers.generation.logits_process import TopKLogitsWarper
 from transformers.generation.logits_process import LogitsProcessorList
@@ -22,6 +23,12 @@ import seaborn as sns
 import pandas as pd
 
 import plotly.graph_objects as go
+
+def print_gpu_memory():
+    if torch.cuda.is_available():
+        print(f"Allocated: {torch.cuda.memory_allocated() / 1024**2:.2f} MB")
+        print(f"Cached: {torch.cuda.memory_reserved() / 1024**2:.2f} MB")
+
 
 def get_confidence_for_class(model, processor, text, image, class_="cat"):
     """
@@ -44,47 +51,51 @@ def get_confidence_for_class(model, processor, text, image, class_="cat"):
     assert number_of_image_tokens == 1024
 
     image_tokens_generation = outputs.sequences[0][0:number_of_image_tokens]
-    # len(image_tokens_generation) -> 1024 (list of 1024 elements, every element is 257152)
-
-
-    # len(outputs.sequences[0][input_len:]) -> 20 (number of generated tokens)
-    # output.keys() -> odict_keys(['sequences', 'logits', 'hidden_states', 'past_key_values'])
-    # len(outputs.hidden_states) -> 20 (number of generated tokens)
-    # len(outputs.hidden_states[0]) -> 27 (number of layers)
-    # outputs.hidden_states[0][0].shape -> torch.Size([1, 1029, 2304])    (1029 is number of input tokens)
-    # outputs.hidden_states[1][0].shape -> torch.Size([1, 1, 2304])
-    # outputs.hidden_states[19][0].shape -> torch.Size([1, 1, 2304])
-    # outputs.hidden_states[19][26][0][0].shape -> torch.Size([2304])       (19 is token number in sentence, 26 is final layer)
-
-    # model.language_model.lm_head. -> (lm_head): Linear(in_features=2304, out_features=257216, bias=False)
-    # model.language_model.lm_head(outputs.hidden_states[19][26][0][0]).shape -> torch.Size([257216])
-    # model.language_model.lm_head(outputs.hidden_states[19][26][0][0]) ->
-    #                               tensor([ -1.5703,   6.2188, -11.3750,  ...,  -1.5547,  -1.5703,  -1.5703],
-    #                               device='cuda:0', dtype=torch.bfloat16, grad_fn=<SqueezeBackward4>)
-
-    # outputs.hidden_states[0][0][0][0].shape -> torch.Size([2304])
-    # outputs.hidden_states[0][0][0][1024].shape -> torch.Size([2304])
-
-    # breakpoint()
 
     class_index = processor.tokenizer.encode(class_)[0]
 
-    class_probs_across_layers_for_each_image_token = []
+    number_of_image_tokens = len(outputs.sequences[0][0:number_of_image_tokens])
+    number_of_layers = len(outputs.hidden_states[0])
+    print(f"Number of image tokens: {number_of_image_tokens}")
+    print(f"Number of layers: {number_of_layers}")
+    
+    # Create a numpy array to store probabilities
+    probs_file = f'temp//confidence_scores_{class_}.npy'
+    if os.path.exists(probs_file):
+        os.remove(probs_file)
+    
+    layer_probs = np.zeros((number_of_layers, number_of_image_tokens))  # (num_layers, num_image_tokens)
+
     # going thru 27 layers
-    for hidden_state in tqdm(outputs.hidden_states[0]):
+    for layer_idx, hidden_state in tqdm(enumerate(outputs.hidden_states[0])):
         # going through 1024 image tokens
-        class_probs_across_each_image_token = []
-        for token_logits in tqdm(hidden_state[0][0:number_of_image_tokens]):
+        for token_idx, token_logits in tqdm(enumerate(hidden_state[0][0:number_of_image_tokens])):
             token_logits = model.language_model.lm_head(token_logits)
             probs = torch.nn.functional.softmax(token_logits, dim=-1)
             class_prob = probs[class_index]
-            class_probs_across_each_image_token.append(class_prob)
-        class_probs_across_layers_for_each_image_token.append(class_probs_across_each_image_token)
+            layer_probs[layer_idx, token_idx] = class_prob.float().detach().cpu().numpy()
 
-    # len(class_probs_across_each_image_token) -> 1024 (number of image tokens)
-    # len(class_probs_across_layers_for_each_image_token) -> 27 (number of layers)
-    
-    return class_probs_across_layers_for_each_image_token, final_generation
+        print_gpu_memory()
+        
+        # Save the current layer's probabilities to file
+        np.save(probs_file, layer_probs)
+
+    del layer_probs, model
+
+    # Clear CUDA cache
+    if torch.cuda.is_available():
+        print("Clearing CUDA cache")
+        torch.cuda.empty_cache()
+
+    # Force garbage collection
+    import gc
+    gc.collect()
+
+    print_gpu_memory()
+
+    raise Exception("Stop here")
+
+    return final_generation
 
 
 def plot_conf_scores(conf_scores, class_="cat"):

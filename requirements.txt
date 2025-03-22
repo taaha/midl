@@ -5,3 +5,4 @@ tqdm
 seaborn
 plotly
 kaleido
+memory_profiler
