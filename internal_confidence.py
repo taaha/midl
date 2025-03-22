@@ -3,6 +3,7 @@ from PIL import Image
 from io import BytesIO
 import torch
 import numpy as np
+import argparse
 
 from transformers.generation.logits_process import TopKLogitsWarper
 from transformers.generation.logits_process import LogitsProcessorList
@@ -158,7 +159,7 @@ def plot_conf_segmentation(conf_scores, image, class_="cat"):
     plt.axis('off')
     plt.title(f"'{class_}' localization")
     plt.tight_layout()
-    plt.savefig(f'segmentation_resized_{class_}.png')
+    plt.savefig(f'data/segmented_images/segmentation_resized_{class_}.png')
 
 
 def analyze_text(text, model_id="google/paligemma2-3b-mix-448", image=None, target_token="cat"):
@@ -177,12 +178,18 @@ def analyze_text(text, model_id="google/paligemma2-3b-mix-448", image=None, targ
     return final_generation
 
 if __name__ == "__main__":
-    text = "caption the picture"
-    img_path = "images/COCO_val2014_000000562150.jpg"
+    # Add argument parsing
+    parser = argparse.ArgumentParser(description='Analyze text with Gemma model.')
+    parser.add_argument('--text', type=str, required=True, help='Text to analyze')
+    parser.add_argument('--image', type=str, required=True, help='Path to the image file')
+    parser.add_argument('--target_token', type=str, required=True, help='Target token for analysis')
+    args = parser.parse_args()  # Parse the arguments
+
+    # Use the parsed arguments
+    text = args.text
+    img_path = args.image
     image = Image.open(img_path)
-    # target_token_list=["cat", "grass", "bicycle", "dog", "girl"]
-    # for target_token in tqdm(target_token_list):
-    #     analyze_text(text, image=image, target_token=target_token)
-    final_generation = analyze_text(text, image=image, target_token="dog")
+    
+    final_generation = analyze_text(text, image=image, target_token=args.target_token)
     print(final_generation)
 
