@@ -54,3 +54,12 @@ internal_confidence.py:
 find internal confidence. has to do with passing
 image tokens through lm_head and getting the softmaxx probs
 an decode token (i think)
+
+internal_confidence_gemma10b_a.py:
+getting logits in npy_files
+
+internal_confidence_gemma10b_b.py:
+plotting logits in heatmap
+segmentation good but is their bug in confidence heatmap?
+what should happen in final layers happening in first layers?
+checked with numpy_checker.py but checks out fine? what the hell?

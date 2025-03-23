@@ -5,6 +5,7 @@ import torch
 import numpy as np
 import argparse
 import os
+import gc
 
 from transformers.generation.logits_process import TopKLogitsWarper
 from transformers.generation.logits_process import LogitsProcessorList
@@ -60,6 +61,9 @@ def get_confidence_for_class(model, processor, text, image, class_="cat"):
     print(f"Number of layers: {number_of_layers}")
     
     # Create a numpy array to store probabilities
+    temp_dir = 'temp'
+    if not os.path.exists(temp_dir):
+        os.makedirs(temp_dir)
     probs_file = f'temp//confidence_scores_{class_}.npy'
     if os.path.exists(probs_file):
         os.remove(probs_file)
@@ -74,114 +78,24 @@ def get_confidence_for_class(model, processor, text, image, class_="cat"):
             probs = torch.nn.functional.softmax(token_logits, dim=-1)
             class_prob = probs[class_index]
             layer_probs[layer_idx, token_idx] = class_prob.float().detach().cpu().numpy()
-
+            # for debugging heatmap bug
+            # if layer_idx == 0 and token_idx == 0:
+            #     print(f"Layer {layer_idx}, Token {token_idx}, Class Prob: {class_prob}")
+            # if layer_idx == 20 and token_idx == 1023:
+            #     print(f"Layer {layer_idx}, Token {token_idx}, Class Prob: {class_prob}")
+            # if layer_idx == 42 and token_idx == 1023:
+            #     print(f"Layer {layer_idx}, Token {token_idx}, Class Prob: {class_prob}")
         print_gpu_memory()
         
         # Save the current layer's probabilities to file
         np.save(probs_file, layer_probs)
 
     del layer_probs, model
-
-    # Clear CUDA cache
-    if torch.cuda.is_available():
-        print("Clearing CUDA cache")
-        torch.cuda.empty_cache()
-
-    # Force garbage collection
-    import gc
-    gc.collect()
+    gc.collect(); torch.cuda.empty_cache()
 
     print_gpu_memory()
 
-    raise Exception("Stop here")
-
     return final_generation
-
-
-def plot_conf_scores(conf_scores, class_="cat"):
-    """
-    Plot confidence scores as a heatmap where rows are image tokens (1024) and columns are layers (27).
-    """
-    # Convert list of lists of tensors to numpy array
-    conf_matrix = np.array([[float(tensor.cpu()) for tensor in layer] for layer in conf_scores])
-    
-    # Transpose to match the desired visualization (1024 rows x 27 columns)
-    conf_matrix = conf_matrix.T
-    
-    # Create the figure and axis
-    plt.figure(figsize=(12, 8))
-    
-    # Create heatmap using seaborn
-    sns.heatmap(conf_matrix, cmap='Blues', 
-                xticklabels=list(range(27)),  # Layer indices
-                yticklabels=list(range(0, 1024, 100)),  # Show every 100th token index
-                cbar_kws={'label': 'Confidence Score'})
-    
-    plt.xlabel('LM Layer')
-    plt.ylabel('Image Embedding Index')
-    plt.title(f'Confidence Scores Across Layers and Image Tokens for {class_}')
-    
-    # Save the plot
-    plt.savefig('confidence_heatmap.png', dpi=300, bbox_inches='tight')
-    plt.close()
-
-
-def plot_conf_scores_log(conf_scores):
-    """
-    Plot confidence scores as a heatmap where rows are image tokens (1024) and columns are layers (27).
-    Using log scale to better visualize the range of values.
-    """
-    # Convert list of lists of tensors to numpy array
-    conf_matrix = np.array([[float(tensor.cpu()) for tensor in layer] for layer in conf_scores])
-    
-    # Transpose to match the desired visualization (1024 rows x 27 columns)
-    conf_matrix = conf_matrix.T
-    
-    # Apply log transformation (adding small epsilon to avoid log(0))
-    epsilon = 1e-10
-    conf_matrix_log = np.log10(conf_matrix + epsilon)
-    
-    # Create the figure and axis
-    plt.figure(figsize=(12, 8))
-    
-    # Create heatmap using seaborn with a logarithmic colormap
-    sns.heatmap(conf_matrix_log, 
-                cmap='Blues',
-                xticklabels=list(range(27)),  # Layer indices
-                yticklabels=list(range(0, 1024, 100)),  # Show every 100th token index
-                cbar_kws={'label': 'Log10(Confidence Score)'})
-    
-    plt.xlabel('LM Layer')
-    plt.ylabel('Image Embedding Index')
-    plt.title('Log-scale Confidence Scores Across Layers and Image Tokens')
-    
-    # Save the plot
-    plt.savefig('confidence_heatmap_log.png', dpi=300, bbox_inches='tight')
-    plt.close()
-
-
-def plot_conf_segmentation(conf_scores, image, class_="cat"):
-    ## max value logits
-    stacked_tensors = torch.stack([torch.stack(tensor_list) for tensor_list in conf_scores])
-    max_values = torch.max(stacked_tensors, dim=0).values
-    max_values_list = max_values.tolist()
-    max_values_list_reshaped = np.array(max_values_list).reshape(32, 32)
-    segmentation_resized = (np.array(Image.fromarray(max_values_list_reshaped).resize((image.width, image.height), Image.BILINEAR)))
-
-    ## last layer logits
-    # last_layer_logits = [float(tensor.cpu()) for tensor in conf_scores[-1]]
-    # last_layer_logits_reshaped = np.array(last_layer_logits).reshape(32, 32)
-    # image_width, image_height = image.size
-    # segmentation_resized = (np.array(Image.fromarray(last_layer_logits_reshaped).resize((image_width, image_height), Image.BILINEAR)))
-
-
-    plt.imshow(image)
-    plt.imshow(segmentation_resized, cmap='jet', interpolation='bilinear', alpha=0.5)
-    plt.axis('off')
-    plt.title(f"'{class_}' localization")
-    plt.tight_layout()
-    plt.savefig(f'data/segmented_images/segmentation_resized_{class_}.png')
-
 
 def analyze_text(text, model_id="google/paligemma2-10b-mix-448", image=None, target_token="cat"):
     """
@@ -192,11 +106,8 @@ def analyze_text(text, model_id="google/paligemma2-10b-mix-448", image=None, tar
     processor = PaliGemmaProcessor.from_pretrained(model_id)
     tokenizer = processor.tokenizer
     
-    conf_scores, final_generation = get_confidence_for_class(model, processor, text, image, class_=target_token)
+    final_generation = get_confidence_for_class(model, processor, text, image, class_=target_token)
 
-    # TODO: take max vlaue insteadof final layer
-    plot_conf_segmentation(conf_scores, image, class_=target_token)
-    return final_generation
 
 if __name__ == "__main__":
     # Add argument parsing
