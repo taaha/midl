@@ -63,3 +63,9 @@ plotting logits in heatmap
 segmentation good but is their bug in confidence heatmap?
 what should happen in final layers happening in first layers?
 checked with numpy_checker.py but checks out fine? what the hell?
+
+gemma_2b/train_gemma2b.py:
+training gemma 2b model on vqav2 dataset (qlora)
+
+gemma_2b/comp_test1.py:
+comparing trained and untrained gemma 2b model

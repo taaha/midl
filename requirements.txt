@@ -5,4 +5,7 @@ tqdm
 seaborn
 plotly
 kaleido
-memory_profiler
+unsloth
+datasets
+bitsandbytes
+peft

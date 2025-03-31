@@ -1,1 +1,4 @@
 temp/confidence_scores_cat.npy
+gemma_2b/paligemma_vqav2
+unsloth_compiled_cache/
+temp/
