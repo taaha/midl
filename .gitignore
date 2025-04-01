@@ -2,3 +2,6 @@ temp/confidence_scores_cat.npy
 gemma_2b/paligemma_vqav2
 unsloth_compiled_cache/
 temp/
+llama_11b/lora_model
+llama_11b/outputs
+llama_11b/unsloth_compiled_cache
