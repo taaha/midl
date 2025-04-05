@@ -144,7 +144,7 @@ if __name__ == "__main__":
                         help='Text to analyze')
     parser.add_argument('--image_index', type=int, default=0, help='dataset index of image')
     parser.add_argument('--target_token', type=str, default="lesion", help='Target token for analysis')
-    parser.add_argument('--model_id', type=str, default="unsloth/Llama-3.2-11B-Vision-Instruct", help='Model id')
+    parser.add_argument('--model_id', type=str, default="unsloth/Pixtral-12B-2409-bnb-4bit", help='Model id')
     parser.add_argument("--is_trained", type=bool, default=False, help="Whether the model is trained")
     args = parser.parse_args()  # Parse the arguments
 

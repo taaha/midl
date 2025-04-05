@@ -69,3 +69,12 @@ training gemma 2b model on vqav2 dataset (qlora)
 
 gemma_2b/comp_test1.py:
 comparing trained and untrained gemma 2b model
+
+
+now focusing on llama_11b
+cant find image tokens inside llama_11b
+architecture looks different
+
+
+will now look at pixtral model
+bug at insloth end. try again next week.
