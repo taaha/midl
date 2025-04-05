@@ -78,3 +78,8 @@ architecture looks different
 
 will now look at pixtral model
 bug at insloth end. try again next week.
+
+workde another issue
+pixtral changes number of tokens for each image
+restrict size of image to 512x512
+now working. will train with bigger storage

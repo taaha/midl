@@ -44,6 +44,7 @@ def get_confidence_for_class(model, processor, text, image, image_index, class_=
     FastVisionModel.for_inference(model) # Enable for inference!
 
     image = ds[image_index]["image"]
+    image = image.resize((512, 512))
     instruction = "You are an expert radiographer. Describe accurately what you see in this image."
 
     messages = [
@@ -56,8 +57,8 @@ def get_confidence_for_class(model, processor, text, image, image_index, class_=
     inputs = processor(
         image,
         input_text,
-        # add_special_tokens = False,
-        add_special_tokens = True,
+        add_special_tokens = False,
+        return_token_type_ids = False,
         return_tensors = "pt",
     ).to("cuda")
 
@@ -66,14 +67,16 @@ def get_confidence_for_class(model, processor, text, image, image_index, class_=
     #                 use_cache = True, temperature = 1.5, min_p = 0.1)
     outputs = model.generate(**inputs, max_new_tokens = 128,
                     use_cache = True, temperature = 1.5, min_p = 0.1,
-                    output_hidden_states = True, output_logits = True, return_dict_in_generate = True)
+                    output_hidden_states = True, 
+                    output_logits = True, 
+                    return_dict_in_generate = True
+                    )
 
     generation = outputs.sequences[0]
     final_generation = processor.decode(generation, skip_special_tokens=False)
 
     # counting number of image token (257152)
-    number_of_image_tokens = torch.sum(torch.eq(outputs.sequences[0],257152)).item()
-    breakpoint()
+    number_of_image_tokens = torch.sum(torch.eq(outputs.sequences[0],10)).item()
     assert number_of_image_tokens == 1024
 
     image_tokens_generation = outputs.sequences[0][0:number_of_image_tokens]
