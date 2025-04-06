@@ -61,6 +61,7 @@ def get_confidence_for_class(model, tokenizer, text, image, class_="lesion"):
     final_generation = final_generation.split('\nassistant\n')[-1]
 
     # counting number of image token (151644)
+
     number_of_image_tokens = torch.sum(torch.eq(outputs.sequences[0],151655)).item()
     assert number_of_image_tokens == 324
 

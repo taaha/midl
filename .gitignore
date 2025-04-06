@@ -7,3 +7,5 @@ llama_11b/outputs
 llama_11b/unsloth_compiled_cache
 pixtral/unsloth_compiled_cache
 pixtral/torchinductor_root
+pixtral/outputs
+temp/

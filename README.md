@@ -83,3 +83,13 @@ workde another issue
 pixtral changes number of tokens for each image
 restrict size of image to 512x512
 now working. will train with bigger storage
+wierd error
+
+wait lets retry qwen2b WITH RESIZING
+done but model acting very sus
+retrain in Kaggle?
+
+
+go beserk on resizing
+
+
